@@ -6,6 +6,7 @@ from torchvision import models, transforms
 from PIL import Image
 import numpy as np
 import cv2
+import gdown
 
 # Sayfa Yapılandırması
 st.set_page_config(
@@ -14,43 +15,58 @@ st.set_page_config(
     layout="wide"
 )
 
-# 1. Zarif Kurabiye Temalı CSS
+# 1. Yazıları Net Siyah Yapan ve Temayı Koruyan CSS
 custom_css = """
 <style>
-    /* Arka plana şık, hafif ve yarı saydam kurabiye deseni */
+    /* Ana Arka Plan */
     .stApp {
         background-color: #fcf9f2;
         background-image: radial-gradient(#d4a373 0.75px, transparent 0.75px), radial-gradient(#faedcd 0.75px, #fcf9f2 0.75px);
         background-size: 30px 30px;
         background-position: 0 0, 15px 15px;
+        color: #1a1a1a !important;
     }
     
     /* Sidebar Stili */
     section[data-testid="stSidebar"] {
-        background-color: #f4ede2;
+        background-color: #f4ede2 !important;
         border-right: 1px solid #e6ccb2;
     }
 
-    /* Başlık ve Kart Tasarımları */
-    h1, h2, h3 {
-        color: #6b4423 !important;
+    /* Sidebar İçindeki Tüm Yazıları Siyah Yap */
+    section[data-testid="stSidebar"] * {
+        color: #1a1a1a !important;
+    }
+
+    /* Ana Ekrandaki Başlıklar ve Metinler */
+    h1, h2, h3, h4, h5, h6, p, span, label {
+        color: #1a1a1a !important;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
-    
+
+    /* Başlıklar İçin Özel Koyu Kahve */
+    h1, h2, h3 {
+        color: #4a2c11 !important;
+        font-weight: 700 !important;
+    }
+
+    /* Uyarı / Bilgilendirme Kutuları */
     .stAlert {
         border-radius: 10px;
+        color: #1a1a1a !important;
     }
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
 # 2. Model Yükleme
+@st.cache_resource
 def load_defect_model():
     model_path = "best_biscuit_patch_model.pth"
     
-    # Model yerelde yoksa Google Drive'dan otomatik indir
+    # Model dosyası yerelde yoksa Drive'dan indir
     if not os.path.exists(model_path):
-        file_id = "1Iy6AAn5qN5sdxbumoELCpd09Z-EFwRFo"
+        file_id = "BURAYA_GDRIVE_FILE_ID_YAZILACAK"  # Kendi Drive ID'ni buraya yaz
         url = f"https://drive.google.com/uc?id={file_id}"
         gdown.download(url, model_path, quiet=False)
 
@@ -61,6 +77,9 @@ def load_defect_model():
     model = model.to(device)
     model.eval()
     return model, device
+
+model, device = load_defect_model()
+
 # 3. Patch Dönüşümleri
 transform = transforms.Compose([
     transforms.ToTensor(),
@@ -142,7 +161,6 @@ def analyze_biscuit(image, nok_threshold=0.30, min_component_area=80):
 # 5. Sidebar Kontrolleri
 st.sidebar.title("🍪 Kontrol Paneli")
 
-# Görsel Seçim Yöntemi
 input_mode = st.sidebar.radio(
     "Görsel Kaynağı:",
     ["Örnek Görsellerden Seç", "Kendi Fotoğrafını Yükle"]
@@ -150,16 +168,17 @@ input_mode = st.sidebar.radio(
 
 selected_image = None
 
+# Klasör adı doğrudan 'test' olarak ayarlandı
 if input_mode == "Örnek Görsellerden Seç":
     samples_dir = "test"
     os.makedirs(samples_dir, exist_ok=True)
     sample_files = [f for f in os.listdir(samples_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))]
     
     if sample_files:
-        chosen_sample = st.sidebar.selectbox("Test İçin Hazır Görsel Seçin:", sorted(sample_files))
+        chosen_sample = st.sidebar.selectbox("Test Görseli Seçin:", sorted(sample_files))
         selected_image = Image.open(os.path.join(samples_dir, chosen_sample))
     else:
-        st.sidebar.warning("Henüz `samples/` klasörüne örnek fotoğraf eklenmedi.")
+        st.sidebar.warning("`test/` klasöründe uygun görsel bulunamadı.")
 else:
     uploaded_file = st.sidebar.file_uploader("Bisküvi fotoğrafı yükleyin...", type=["png", "jpg", "jpeg", "webp"])
     if uploaded_file is not None:
@@ -172,7 +191,7 @@ min_area_slider = st.sidebar.slider("Min. Kusur Alanı (Piksel)", min_value=30, 
 
 # 6. Ana Ekran
 st.title("🍪 Bisküvi Kalite Kontrol Sistemi")
-st.write("Yapay zeka tabanlı yüzey hasarı, kırık ve baskı kusuru tespit arayüzü.")
+st.write("Yapay zeka tabanlı yüzey hasarı, kırık ve çatlak tespit arayüzü.")
 
 if selected_image is not None:
     col1, col2 = st.columns(2)
@@ -195,6 +214,6 @@ if selected_image is not None:
     if is_defective:
         st.error("🔴 SONUÇ: KUSURLU (NOK) - Hasarlı bölge kırmızıyla işaretlendi.")
     else:
-        st.success("🟢 SONUÇ: SAĞLAM (OK) - Ürün sağlam standartlara uygun.")
+        st.success("🟢 SONUÇ: SAĞLAM (OK) - Ürün standartlara uygun.")
 else:
-    st.info("👈 Lütfen sol panelden hazır bir örnek seçin veya test etmek için yeni bir fotoğraf yükleyin.")
+    st.info("👈 Lütfen sol panelden hazır bir test görseli seçin veya analiz için yeni bir fotoğraf yükleyin.")
