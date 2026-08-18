@@ -72,10 +72,8 @@ st.markdown(custom_css, unsafe_allow_html=True)
 def load_defect_model():
     model_path = "best_biscuit_patch_model.pth"
     
-    # EĞER DOSYA YOKSA YA DA BOYUTU ÇOK KÜÇÜKSE (BOZUK İNDİYSE) YENİDEN İNDİR
     if not os.path.exists(model_path) or os.path.getsize(model_path) < 1000000:
-        # BURAYA 1. ADIMDA KOPYALADIĞIN GITHUB RELEASE LINKINI YAPIŞTIR:
-        MODEL_URL = "https://github.com/boradogann/cracked-cookie-analysis/releases/download/v1.0/best_biscuit_patch_model.pth"
+        MODEL_URL = "https://github.com/boradogann/Cracked-Cookie-Analysis/releases/download/v1.0/best_biscuit_patch_model.pth"
         
         with st.spinner("Model ağırlıkları indiriliyor, lütfen bekleyin..."):
             urllib.request.urlretrieve(MODEL_URL, model_path)
@@ -189,7 +187,7 @@ st.sidebar.title("🍪 Kontrol Paneli")
 
 input_mode = st.sidebar.radio(
     "Görsel Kaynağı:",
-    ["Örnek Görsellerden Seç", "Kendi Fotoğrafını Yükle"]
+    ["Örnek Görsellerden Seç", "Kendi Fotoğrafını Yükle", "📸 Kameradan Fotoğraf Çek"]
 )
 
 selected_image = None
@@ -215,10 +213,14 @@ if input_mode == "Örnek Görsellerden Seç":
         selected_image = Image.open(sample_dict[chosen_display])
     else:
         st.sidebar.warning("`test/` klasöründe görsel bulunamadı.")
-else:
+elif input_mode == "Kendi Fotoğrafını Yükle":
     uploaded_file = st.sidebar.file_uploader("Bisküvi fotoğrafı yükleyin...", type=["png", "jpg", "jpeg", "webp"])
     if uploaded_file is not None:
         selected_image = Image.open(uploaded_file)
+else:
+    camera_photo = st.sidebar.camera_input("Kameradan fotoğraf çekin")
+    if camera_photo is not None:
+        selected_image = Image.open(camera_photo)
 
 st.sidebar.divider()
 st.sidebar.subheader("Model Ayarları")
@@ -252,4 +254,4 @@ if selected_image is not None:
         else:
             st.info("Analizi başlatmak için yukarıdaki **'Görseli Analiz Et'** butonuna basın.")
 else:
-    st.info("👈 Lütfen sol panelden bir test görseli seçin veya kendi fotoğrafınızı yükleyin.")
+    st.info("👈 Lütfen sol panelden bir test görseli seçin, fotoğraf yükleyin veya kameranızı kullanın.")
