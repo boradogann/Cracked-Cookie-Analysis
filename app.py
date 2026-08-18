@@ -8,16 +8,16 @@ import numpy as np
 import cv2
 import gdown
 
-# Sayfa Yapılandırması
 st.set_page_config(
     page_title="CookieVision | Bisküvi Kusur Tespiti",
     page_icon="🍪",
     layout="wide"
 )
 
-# 1. Okunaklı Temiz CSS
+# 1. Açık Renkli, Modern ve Okunaklı CSS
 custom_css = """
 <style>
+    /* Ana Arka Plan */
     .stApp {
         background-color: #fcf9f2;
         background-image: radial-gradient(#d4a373 0.75px, transparent 0.75px), radial-gradient(#faedcd 0.75px, #fcf9f2 0.75px);
@@ -26,17 +26,15 @@ custom_css = """
         color: #1a1a1a !important;
     }
     
+    /* Sidebar Arka Planı */
     section[data-testid="stSidebar"] {
-        background-color: #f4ede2 !important;
-        border-right: 1px solid #e6ccb2;
+        background-color: #f5ede4 !important;
+        border-right: 1px solid #e0d0c1;
     }
 
-    section[data-testid="stSidebar"] * {
-        color: #1a1a1a !important;
-    }
-
+    /* Genel Yazı Renkleri */
     h1, h2, h3, h4, h5, h6, p, span, label {
-        color: #1a1a1a !important;
+        color: #2c1810 !important;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
 
@@ -45,9 +43,54 @@ custom_css = """
         font-weight: 700 !important;
     }
 
+    /* Selectbox (Seçim Kutusu) Açık Renk Düzeltmesi */
+    div[data-baseweb="select"] > div {
+        background-color: #ffffff !important;
+        color: #1a1a1a !important;
+        border: 1.5px solid #d4a373 !important;
+        border-radius: 8px !important;
+    }
+
+    /* Selectbox İçindeki Yazı ve Ok Simgesi */
+    div[data-baseweb="select"] * {
+        color: #1a1a1a !important;
+        background-color: transparent !important;
+    }
+
+    /* Açılır Menü Listesi (Dropdown Menü) */
+    ul[data-testid="stSelectboxVirtualDropdown"] {
+        background-color: #ffffff !important;
+    }
+    
+    ul[data-testid="stSelectboxVirtualDropdown"] li {
+        background-color: #ffffff !important;
+        color: #1a1a1a !important;
+    }
+
+    ul[data-testid="stSelectboxVirtualDropdown"] li:hover {
+        background-color: #faedcd !important;
+        color: #4a2c11 !important;
+    }
+
+    /* Buton Tasarımı */
+    div.stButton > button {
+        background-color: #c97a3e !important;
+        color: #ffffff !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        transition: all 0.2s ease-in-out;
+    }
+    
+    div.stButton > button:hover {
+        background-color: #a85d26 !important;
+        color: #ffffff !important;
+        transform: scale(1.02);
+    }
+
+    /* Slider / Bilgi Kutuları */
     .stAlert {
         border-radius: 10px;
-        color: #1a1a1a !important;
     }
 </style>
 """
@@ -59,7 +102,6 @@ def load_defect_model():
     model_path = "best_biscuit_patch_model.pth"
     
     if not os.path.exists(model_path):
-        # Kendi Google Drive File ID'nizi buraya yazın
         file_id = "13eY6048dG51DskZc49GZc6Y9b5E18f1p"
         url = f"https://drive.google.com/uc?id={file_id}"
         gdown.download(id=file_id, output=model_path, quiet=False, fuzzy=True)
@@ -206,7 +248,6 @@ if selected_image is not None:
 
     with col2:
         st.subheader("Kusur Analiz Sonucu")
-        # Analiz butonu
         if st.button("🔍 Görseli Analiz Et", type="primary", use_container_width=True):
             with st.spinner("Model analiz ediyor..."):
                 result_img, is_defective, msg = analyze_biscuit(
