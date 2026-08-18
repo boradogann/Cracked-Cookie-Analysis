@@ -222,7 +222,7 @@ else:
 
 st.sidebar.divider()
 st.sidebar.subheader("Model Ayarları")
-threshold_slider = st.sidebar.slider("NOK Hassasiyet Eşiği", min_value=0.2, max_value=0.8, value=0.45, step=0.05)
+threshold_slider = st.sidebar.slider("NOK Hassasiyet Eşiği", min_value=0.2, max_value=0.8, value=0.70, step=0.05)
 
 # 7. Ana Ekran
 st.title("🍪 Bisküvi Kalite Kontrol Sistemi")
