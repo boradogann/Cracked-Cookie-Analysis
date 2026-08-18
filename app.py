@@ -168,26 +168,32 @@ input_mode = st.sidebar.radio(
 
 selected_image = None
 
-# Klasör adı doğrudan 'test' olarak ayarlandı
 if input_mode == "Örnek Görsellerden Seç":
     samples_dir = "test"
-    os.makedirs(samples_dir, exist_ok=True)
-    sample_files = [f for f in os.listdir(samples_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))]
-    
-    if sample_files:
-        chosen_sample = st.sidebar.selectbox("Test Görseli Seçin:", sorted(sample_files))
-        selected_image = Image.open(os.path.join(samples_dir, chosen_sample))
+    valid_exts = ('.png', '.jpg', '.jpeg', '.webp', '.bmp')
+    sample_dict = {}
+
+    # test klasörünü ve altındaki OK / NOK klasörlerini tara
+    if os.path.exists(samples_dir):
+        for root, _, files in os.walk(samples_dir):
+            # masks klasörü varsa atla
+            if "masks" in root:
+                continue
+            for f in files:
+                if f.lower().endswith(valid_exts):
+                    rel_path = os.path.relpath(os.path.join(root, f), samples_dir)
+                    display_name = f"[{os.path.dirname(rel_path)}] {f}" if os.path.dirname(rel_path) else f
+                    sample_dict[display_name] = os.path.join(root, f)
+
+    if sample_dict:
+        chosen_display = st.sidebar.selectbox("Test Görseli Seçin:", sorted(sample_dict.keys()))
+        selected_image = Image.open(sample_dict[chosen_display])
     else:
-        st.sidebar.warning("`test/` klasöründe uygun görsel bulunamadı.")
+        st.sidebar.warning("`test/` veya alt klasörlerinde (`OK`/`NOK`) uygun görsel bulunamadı.")
 else:
     uploaded_file = st.sidebar.file_uploader("Bisküvi fotoğrafı yükleyin...", type=["png", "jpg", "jpeg", "webp"])
     if uploaded_file is not None:
         selected_image = Image.open(uploaded_file)
-
-st.sidebar.divider()
-st.sidebar.subheader("Model Hassasiyet Ayarları")
-threshold_slider = st.sidebar.slider("NOK Hassasiyet Eşiği", min_value=0.1, max_value=0.8, value=0.30, step=0.05)
-min_area_slider = st.sidebar.slider("Min. Kusur Alanı (Piksel)", min_value=30, max_value=300, value=80, step=10)
 
 # 6. Ana Ekran
 st.title("🍪 Bisküvi Kalite Kontrol Sistemi")
