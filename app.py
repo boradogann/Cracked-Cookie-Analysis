@@ -151,7 +151,7 @@ input_mode = st.sidebar.radio(
 selected_image = None
 
 if input_mode == "Örnek Görsellerden Seç":
-    samples_dir = "samples"
+    samples_dir = "test"
     os.makedirs(samples_dir, exist_ok=True)
     sample_files = [f for f in os.listdir(samples_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp'))]
     
