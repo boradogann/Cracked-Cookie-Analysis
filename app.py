@@ -1,5 +1,5 @@
 import os
-import urllib.request
+import requests
 import streamlit as st
 import torch
 import torch.nn as nn
@@ -71,20 +71,36 @@ custom_css = """
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
-# 3. Model Yükleme (Hatasız Doğrudan İndirme)
+# 3. Google Drive İndirme Yardımcısı (HTTPError / Bot Korumasını Aşar)
+def download_file_from_google_drive(file_id, destination):
+    URL = "https://docs.google.com/uc?export=download"
+    session = requests.Session()
+    response = session.get(URL, params={'id': file_id}, stream=True)
+    
+    token = None
+    for key, value in response.cookies.items():
+        if key.startswith('download_warning'):
+            token = value
+            break
+
+    if token:
+        params = {'id': file_id, 'confirm': token}
+        response = session.get(URL, params=params, stream=True)
+
+    with open(destination, "wb") as f:
+        for chunk in response.iter_content(32768):
+            if chunk:
+                f.write(chunk)
+
+# 4. Model Yükleme
 @st.cache_resource
 def load_defect_model():
     model_path = "best_biscuit_patch_model.pth"
     
     if not os.path.exists(model_path):
         file_id = "13eY6048dG51DskZc49GZc6Y9b5E18f1p"
-        download_url = f"https://drive.usercontent.google.com/download?id={file_id}&export=download&authuser=0&confirm=t"
-        
-        try:
-            import gdown
-            gdown.download(f"https://drive.google.com/uc?id={file_id}", model_path, quiet=False)
-        except Exception:
-            urllib.request.urlretrieve(download_url, model_path)
+        with st.spinner("Model dosyası yükleniyor, lütfen birkaç saniye bekleyin..."):
+            download_file_from_google_drive(file_id, model_path)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = models.resnet18(weights=None)
@@ -96,7 +112,7 @@ def load_defect_model():
 
 model, device = load_defect_model()
 
-# 4. Patch Dönüşümleri
+# 5. Patch Dönüşümleri
 transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -104,7 +120,7 @@ transform = transforms.Compose([
 
 PATCH_SIZE = 64
 
-# 5. Kusur Analiz Fonksiyonu
+# 6. Analiz Fonksiyonu
 def analyze_biscuit(image, nok_threshold=0.30, min_component_area=80):
     if image is None:
         return None, False, "Lütfen bir görsel yükleyin."
@@ -112,7 +128,6 @@ def analyze_biscuit(image, nok_threshold=0.30, min_component_area=80):
     img_np = np.array(image.convert("RGB"))
     h, w, _ = img_np.shape
 
-    # Dolu Bisküvi Gövde Maskesi (Convex Hull)
     gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
     _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     
@@ -147,7 +162,6 @@ def analyze_biscuit(image, nok_threshold=0.30, min_component_area=80):
     if len(patch_batch) == 0:
         return img_np, False, "Görselde bisküvi tespit edilemedi!"
 
-    # Model Tahmini
     batch_tensors = torch.stack(patch_batch).to(device)
     with torch.no_grad():
         outputs = model(batch_tensors)
@@ -160,12 +174,10 @@ def analyze_biscuit(image, nok_threshold=0.30, min_component_area=80):
     count_map[count_map == 0] = 1.0
     heatmap_avg = (heatmap_acc / count_map) * solid_roi_mask
 
-    # İkili Eşikleme ve Morfolojik Kapanış
     binary_defects = (heatmap_avg >= nok_threshold).astype(np.uint8) * 255
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21))
     closed_defects = cv2.morphologyEx(binary_defects, cv2.MORPH_CLOSE, kernel)
 
-    # Bağlı Bileşen Analizi
     num_labels, labels_im, stats, _ = cv2.connectedComponentsWithStats(closed_defects, connectivity=8)
 
     clean_final_mask = np.zeros((h, w), dtype=np.uint8)
@@ -179,7 +191,6 @@ def analyze_biscuit(image, nok_threshold=0.30, min_component_area=80):
 
     status_str = "🔴 SONUÇ: KUSURLU (NOK)" if valid_defects_found else "🟢 SONUÇ: SAĞLAM (OK)"
 
-    # Görselleştirme
     overlay = img_np.copy()
     if valid_defects_found:
         soft_mask = cv2.GaussianBlur(clean_final_mask.astype(np.float32) / 255.0, (7, 7), 0)
@@ -191,7 +202,7 @@ def analyze_biscuit(image, nok_threshold=0.30, min_component_area=80):
 
     return overlay, valid_defects_found, status_str
 
-# 6. Sidebar Kontrolleri
+# 7. Sidebar Kontrolleri
 st.sidebar.title("🍪 Kontrol Paneli")
 
 input_mode = st.sidebar.radio(
@@ -231,7 +242,7 @@ st.sidebar.divider()
 st.sidebar.subheader("Model Ayarları")
 threshold_slider = st.sidebar.slider("NOK Hassasiyet Eşiği", min_value=0.2, max_value=0.8, value=0.45, step=0.05)
 
-# 7. Ana Ekran
+# 8. Ana Ekran
 st.title("🍪 Bisküvi Kalite Kontrol Sistemi")
 st.write("Yapay zeka tabanlı yüzey hasarı, kırık ve çatlak tespit arayüzü.")
 
