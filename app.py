@@ -15,7 +15,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Açık Renkleri ve Okunaklılığı Garanti Eden CSS
+# 2. Açık Renk ve Net Görünüm Stili
 custom_css = """
 <style>
     /* Ana Arka Plan */
@@ -46,39 +46,6 @@ custom_css = """
     h1, h2, h3 {
         color: #4a2c11 !important;
         font-weight: 700 !important;
-    }
-
-    /* Selectbox Dış Kutu ve İç Elemanları (Dark Mode Zorlamasını Kırar) */
-    .stSelectbox div[data-baseweb="select"],
-    .stSelectbox div[data-baseweb="select"] > div,
-    .stSelectbox div[data-baseweb="select"] input,
-    .stSelectbox div[data-baseweb="select"] div {
-        background-color: #ffffff !important;
-        color: #1a1a1a !important;
-        -webkit-text-fill-color: #1a1a1a !important;
-    }
-
-    .stSelectbox div[data-baseweb="select"] {
-        border: 1.5px solid #d4a373 !important;
-        border-radius: 8px !important;
-    }
-
-    .stSelectbox svg {
-        fill: #1a1a1a !important;
-    }
-
-    /* Açılır Menü Seçenek Listesi */
-    ul[data-testid="stSelectboxVirtualDropdown"],
-    ul[data-testid="stSelectboxVirtualDropdown"] li,
-    ul[data-testid="stSelectboxVirtualDropdown"] div {
-        background-color: #ffffff !important;
-        color: #1a1a1a !important;
-        -webkit-text-fill-color: #1a1a1a !important;
-    }
-
-    ul[data-testid="stSelectboxVirtualDropdown"] li:hover {
-        background-color: #faedcd !important;
-        color: #4a2c11 !important;
     }
 
     /* Buton Tasarımı */
@@ -139,7 +106,7 @@ def analyze_biscuit(image, nok_threshold=0.30, min_component_area=80):
     img_np = np.array(image.convert("RGB"))
     h, w, _ = img_np.shape
 
-    # 1. Dolu Bisküvi Gövde Maskesi (Convex Hull)
+    # Dolu Bisküvi Gövde Maskesi (Convex Hull)
     gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
     _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     
@@ -187,14 +154,12 @@ def analyze_biscuit(image, nok_threshold=0.30, min_component_area=80):
     count_map[count_map == 0] = 1.0
     heatmap_avg = (heatmap_acc / count_map) * solid_roi_mask
 
-    # 2. İkili Eşikleme
+    # İkili Eşikleme ve Morfolojik Kapanış
     binary_defects = (heatmap_avg >= nok_threshold).astype(np.uint8) * 255
-
-    # 3. Morfolojik Kapanış
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21))
     closed_defects = cv2.morphologyEx(binary_defects, cv2.MORPH_CLOSE, kernel)
 
-    # 4. Bağlı Bileşen Analizi
+    # Bağlı Bileşen Analizi
     num_labels, labels_im, stats, _ = cv2.connectedComponentsWithStats(closed_defects, connectivity=8)
 
     clean_final_mask = np.zeros((h, w), dtype=np.uint8)
@@ -208,7 +173,7 @@ def analyze_biscuit(image, nok_threshold=0.30, min_component_area=80):
 
     status_str = "🔴 SONUÇ: KUSURLU (NOK)" if valid_defects_found else "🟢 SONUÇ: SAĞLAM (OK)"
 
-    # 5. Görselleştirme
+    # Görselleştirme
     overlay = img_np.copy()
     if valid_defects_found:
         soft_mask = cv2.GaussianBlur(clean_final_mask.astype(np.float32) / 255.0, (7, 7), 0)
@@ -246,10 +211,9 @@ if input_mode == "Örnek Görsellerden Seç":
                     sample_dict[display_name] = os.path.join(root, f)
 
     if sample_dict:
-        options = ["--- Bir görsel seçin ---"] + sorted(list(sample_dict.keys()))
-        chosen_display = st.sidebar.selectbox("Test Görseli Seçin:", options)
-        if chosen_display != "--- Bir görsel seçin ---":
-            selected_image = Image.open(sample_dict[chosen_display])
+        options = sorted(list(sample_dict.keys()))
+        chosen_display = st.sidebar.radio("Test Görseli Seçin:", options)
+        selected_image = Image.open(sample_dict[chosen_display])
     else:
         st.sidebar.warning("`test/` klasöründe uygun görsel bulunamadı.")
 else:
