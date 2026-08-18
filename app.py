@@ -1,5 +1,5 @@
 import os
-import requests
+import urllib.request
 import streamlit as st
 import torch
 import torch.nn as nn
@@ -15,10 +15,9 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Açık Renk ve Net Görünüm Stili
+# 2. CSS Tasarımı
 custom_css = """
 <style>
-    /* Ana Arka Plan */
     .stApp {
         background-color: #fcf9f2 !important;
         background-image: radial-gradient(#d4a373 0.75px, transparent 0.75px), radial-gradient(#faedcd 0.75px, #fcf9f2 0.75px) !important;
@@ -27,7 +26,6 @@ custom_css = """
         color: #1a1a1a !important;
     }
     
-    /* Sidebar */
     section[data-testid="stSidebar"] {
         background-color: #f5ede4 !important;
         border-right: 1px solid #e0d0c1 !important;
@@ -37,7 +35,6 @@ custom_css = """
         color: #1a1a1a !important;
     }
 
-    /* Genel Metinler ve Başlıklar */
     h1, h2, h3, h4, h5, h6, p, span, label {
         color: #2c1810 !important;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -48,7 +45,6 @@ custom_css = """
         font-weight: 700 !important;
     }
 
-    /* Buton Tasarımı */
     div.stButton > button {
         background-color: #c97a3e !important;
         color: #ffffff !important;
@@ -71,36 +67,18 @@ custom_css = """
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
-# 3. Google Drive İndirme Yardımcısı (HTTPError / Bot Korumasını Aşar)
-def download_file_from_google_drive(file_id, destination):
-    URL = "https://docs.google.com/uc?export=download"
-    session = requests.Session()
-    response = session.get(URL, params={'id': file_id}, stream=True)
-    
-    token = None
-    for key, value in response.cookies.items():
-        if key.startswith('download_warning'):
-            token = value
-            break
-
-    if token:
-        params = {'id': file_id, 'confirm': token}
-        response = session.get(URL, params=params, stream=True)
-
-    with open(destination, "wb") as f:
-        for chunk in response.iter_content(32768):
-            if chunk:
-                f.write(chunk)
-
-# 4. Model Yükleme
+# 3. Model Yükleme (GitHub Release Direkt İndirme)
 @st.cache_resource
 def load_defect_model():
     model_path = "best_biscuit_patch_model.pth"
     
-    if not os.path.exists(model_path):
-        file_id = "1Iy6AAn5qN5sdxbumoELCpd09Z-EFwRFo"
-        with st.spinner("Model dosyası yükleniyor, lütfen birkaç saniye bekleyin..."):
-            download_file_from_google_drive(file_id, model_path)
+    # EĞER DOSYA YOKSA YA DA BOYUTU ÇOK KÜÇÜKSE (BOZUK İNDİYSE) YENİDEN İNDİR
+    if not os.path.exists(model_path) or os.path.getsize(model_path) < 1000000:
+        # BURAYA 1. ADIMDA KOPYALADIĞIN GITHUB RELEASE LINKINI YAPIŞTIR:
+        MODEL_URL = "https://github.com/boradogann/cracked-cookie-analysis/releases/download/v1.0/best_biscuit_patch_model.pth"
+        
+        with st.spinner("Model ağırlıkları indiriliyor, lütfen bekleyin..."):
+            urllib.request.urlretrieve(MODEL_URL, model_path)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = models.resnet18(weights=None)
@@ -112,7 +90,7 @@ def load_defect_model():
 
 model, device = load_defect_model()
 
-# 5. Patch Dönüşümleri
+# 4. Patch Dönüşümleri
 transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -120,7 +98,7 @@ transform = transforms.Compose([
 
 PATCH_SIZE = 64
 
-# 6. Analiz Fonksiyonu
+# 5. Kusur Analiz Fonksiyonu
 def analyze_biscuit(image, nok_threshold=0.30, min_component_area=80):
     if image is None:
         return None, False, "Lütfen bir görsel yükleyin."
@@ -128,6 +106,7 @@ def analyze_biscuit(image, nok_threshold=0.30, min_component_area=80):
     img_np = np.array(image.convert("RGB"))
     h, w, _ = img_np.shape
 
+    # Convex Hull Gövde Tespiti
     gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
     _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     
@@ -174,10 +153,12 @@ def analyze_biscuit(image, nok_threshold=0.30, min_component_area=80):
     count_map[count_map == 0] = 1.0
     heatmap_avg = (heatmap_acc / count_map) * solid_roi_mask
 
+    # İkili Eşikleme ve Morfolojik Kapanış
     binary_defects = (heatmap_avg >= nok_threshold).astype(np.uint8) * 255
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21))
     closed_defects = cv2.morphologyEx(binary_defects, cv2.MORPH_CLOSE, kernel)
 
+    # Bağlı Bileşen Analizi
     num_labels, labels_im, stats, _ = cv2.connectedComponentsWithStats(closed_defects, connectivity=8)
 
     clean_final_mask = np.zeros((h, w), dtype=np.uint8)
@@ -191,6 +172,7 @@ def analyze_biscuit(image, nok_threshold=0.30, min_component_area=80):
 
     status_str = "🔴 SONUÇ: KUSURLU (NOK)" if valid_defects_found else "🟢 SONUÇ: SAĞLAM (OK)"
 
+    # Görselleştirme Katmanı
     overlay = img_np.copy()
     if valid_defects_found:
         soft_mask = cv2.GaussianBlur(clean_final_mask.astype(np.float32) / 255.0, (7, 7), 0)
@@ -202,7 +184,7 @@ def analyze_biscuit(image, nok_threshold=0.30, min_component_area=80):
 
     return overlay, valid_defects_found, status_str
 
-# 7. Sidebar Kontrolleri
+# 6. Sidebar Kontrolleri
 st.sidebar.title("🍪 Kontrol Paneli")
 
 input_mode = st.sidebar.radio(
@@ -232,7 +214,7 @@ if input_mode == "Örnek Görsellerden Seç":
         chosen_display = st.sidebar.radio("Test Görseli Seçin:", options)
         selected_image = Image.open(sample_dict[chosen_display])
     else:
-        st.sidebar.warning("`test/` klasöründe uygun görsel bulunamadı.")
+        st.sidebar.warning("`test/` klasöründe görsel bulunamadı.")
 else:
     uploaded_file = st.sidebar.file_uploader("Bisküvi fotoğrafı yükleyin...", type=["png", "jpg", "jpeg", "webp"])
     if uploaded_file is not None:
@@ -242,7 +224,7 @@ st.sidebar.divider()
 st.sidebar.subheader("Model Ayarları")
 threshold_slider = st.sidebar.slider("NOK Hassasiyet Eşiği", min_value=0.2, max_value=0.8, value=0.45, step=0.05)
 
-# 8. Ana Ekran
+# 7. Ana Ekran
 st.title("🍪 Bisküvi Kalite Kontrol Sistemi")
 st.write("Yapay zeka tabanlı yüzey hasarı, kırık ve çatlak tespit arayüzü.")
 
