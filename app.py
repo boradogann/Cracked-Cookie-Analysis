@@ -15,10 +15,9 @@ st.set_page_config(
     layout="wide"
 )
 
-# 1. Yazıları Net Siyah Yapan ve Temayı Koruyan CSS
+# 1. Okunaklı Temiz CSS
 custom_css = """
 <style>
-    /* Ana Arka Plan */
     .stApp {
         background-color: #fcf9f2;
         background-image: radial-gradient(#d4a373 0.75px, transparent 0.75px), radial-gradient(#faedcd 0.75px, #fcf9f2 0.75px);
@@ -27,30 +26,25 @@ custom_css = """
         color: #1a1a1a !important;
     }
     
-    /* Sidebar Stili */
     section[data-testid="stSidebar"] {
         background-color: #f4ede2 !important;
         border-right: 1px solid #e6ccb2;
     }
 
-    /* Sidebar İçindeki Tüm Yazıları Siyah Yap */
     section[data-testid="stSidebar"] * {
         color: #1a1a1a !important;
     }
 
-    /* Ana Ekrandaki Başlıklar ve Metinler */
     h1, h2, h3, h4, h5, h6, p, span, label {
         color: #1a1a1a !important;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
 
-    /* Başlıklar İçin Özel Koyu Kahve */
     h1, h2, h3 {
         color: #4a2c11 !important;
         font-weight: 700 !important;
     }
 
-    /* Uyarı / Bilgilendirme Kutuları */
     .stAlert {
         border-radius: 10px;
         color: #1a1a1a !important;
@@ -64,11 +58,11 @@ st.markdown(custom_css, unsafe_allow_html=True)
 def load_defect_model():
     model_path = "best_biscuit_patch_model.pth"
     
-    # Model dosyası yerelde yoksa Drive'dan indir
     if not os.path.exists(model_path):
-        file_id = "1Iy6AAn5qN5sdxbumoELCpd09Z-EFwRFo"  
+        # Kendi Google Drive File ID'nizi buraya yazın
+        file_id = "13eY6048dG51DskZc49GZc6Y9b5E18f1p"
         url = f"https://drive.google.com/uc?id={file_id}"
-        gdown.download(url, model_path, quiet=False)
+        gdown.download(id=file_id, output=model_path, quiet=False, fuzzy=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = models.resnet18(weights=None)
@@ -158,7 +152,7 @@ def analyze_biscuit(image, nok_threshold=0.30, min_component_area=80):
 
     return overlay, valid_defects_found, "Analiz Tamamlandı"
 
-# 5. Sidebar Kontrolleri
+# 5. Sidebar Kontrolleri ve Ayarlar
 st.sidebar.title("🍪 Kontrol Paneli")
 
 input_mode = st.sidebar.radio(
@@ -173,10 +167,8 @@ if input_mode == "Örnek Görsellerden Seç":
     valid_exts = ('.png', '.jpg', '.jpeg', '.webp', '.bmp')
     sample_dict = {}
 
-    # test klasörünü ve altındaki OK / NOK klasörlerini tara
     if os.path.exists(samples_dir):
         for root, _, files in os.walk(samples_dir):
-            # masks klasörü varsa atla
             if "masks" in root:
                 continue
             for f in files:
@@ -186,14 +178,21 @@ if input_mode == "Örnek Görsellerden Seç":
                     sample_dict[display_name] = os.path.join(root, f)
 
     if sample_dict:
-        chosen_display = st.sidebar.selectbox("Test Görseli Seçin:", sorted(sample_dict.keys()))
-        selected_image = Image.open(sample_dict[chosen_display])
+        options = ["--- Bir görsel seçin ---"] + sorted(list(sample_dict.keys()))
+        chosen_display = st.sidebar.selectbox("Test Görseli Seçin:", options)
+        if chosen_display != "--- Bir görsel seçin ---":
+            selected_image = Image.open(sample_dict[chosen_display])
     else:
-        st.sidebar.warning("`test/` veya alt klasörlerinde (`OK`/`NOK`) uygun görsel bulunamadı.")
+        st.sidebar.warning("`test/` klasöründe uygun görsel bulunamadı.")
 else:
     uploaded_file = st.sidebar.file_uploader("Bisküvi fotoğrafı yükleyin...", type=["png", "jpg", "jpeg", "webp"])
     if uploaded_file is not None:
         selected_image = Image.open(uploaded_file)
+
+st.sidebar.divider()
+st.sidebar.subheader("Model Hassasiyet Ayarları")
+threshold_slider = st.sidebar.slider("NOK Hassasiyet Eşiği", min_value=0.1, max_value=0.8, value=0.30, step=0.05)
+min_area_slider = st.sidebar.slider("Min. Kusur Alanı (Piksel)", min_value=30, max_value=300, value=80, step=10)
 
 # 6. Ana Ekran
 st.title("🍪 Bisküvi Kalite Kontrol Sistemi")
@@ -202,24 +201,26 @@ st.write("Yapay zeka tabanlı yüzey hasarı, kırık ve çatlak tespit arayüz�
 if selected_image is not None:
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("Girdi Görseli")
+        st.subheader("Seçilen Görsel")
         st.image(selected_image, use_container_width=True)
-
-    with st.spinner("Model analiz ediyor..."):
-        result_img, is_defective, msg = analyze_biscuit(
-            selected_image,
-            nok_threshold=threshold_slider,
-            min_component_area=min_area_slider
-        )
 
     with col2:
         st.subheader("Kusur Analiz Sonucu")
-        st.image(result_img, use_container_width=True)
-
-    st.divider()
-    if is_defective:
-        st.error("🔴 SONUÇ: KUSURLU (NOK) - Hasarlı bölge kırmızıyla işaretlendi.")
-    else:
-        st.success("🟢 SONUÇ: SAĞLAM (OK) - Ürün standartlara uygun.")
+        # Analiz butonu
+        if st.button("🔍 Görseli Analiz Et", type="primary", use_container_width=True):
+            with st.spinner("Model analiz ediyor..."):
+                result_img, is_defective, msg = analyze_biscuit(
+                    selected_image,
+                    nok_threshold=threshold_slider,
+                    min_component_area=min_area_slider
+                )
+            st.image(result_img, use_container_width=True)
+            st.divider()
+            if is_defective:
+                st.error("🔴 SONUÇ: KUSURLU (NOK) - Hasarlı bölge kırmızıyla işaretlendi.")
+            else:
+                st.success("🟢 SONUÇ: SAĞLAM (OK) - Ürün standartlara uygun.")
+        else:
+            st.info("Analizi başlatmak için yukarıdaki **'Görseli Analiz Et'** butonuna basın.")
 else:
-    st.info("👈 Lütfen sol panelden hazır bir test görseli seçin veya analiz için yeni bir fotoğraf yükleyin.")
+    st.info("👈 Lütfen sol panelden bir test görseli seçin veya kendi fotoğrafınızı yükleyin.")
