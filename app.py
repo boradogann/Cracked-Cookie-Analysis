@@ -1,4 +1,5 @@
 import os
+import urllib.request
 import streamlit as st
 import torch
 import torch.nn as nn
@@ -6,7 +7,6 @@ from torchvision import models, transforms
 from PIL import Image
 import numpy as np
 import cv2
-import gdown
 
 # 1. Sayfa Yapılandırması
 st.set_page_config(
@@ -71,14 +71,20 @@ custom_css = """
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
-# 3. Model Yükleme
+# 3. Model Yükleme (Hatasız Doğrudan İndirme)
 @st.cache_resource
 def load_defect_model():
     model_path = "best_biscuit_patch_model.pth"
     
     if not os.path.exists(model_path):
         file_id = "13eY6048dG51DskZc49GZc6Y9b5E18f1p"
-        gdown.download(id=file_id, output=model_path, quiet=False, fuzzy=True)
+        download_url = f"https://drive.usercontent.google.com/download?id={file_id}&export=download&authuser=0&confirm=t"
+        
+        try:
+            import gdown
+            gdown.download(f"https://drive.google.com/uc?id={file_id}", model_path, quiet=False)
+        except Exception:
+            urllib.request.urlretrieve(download_url, model_path)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = models.resnet18(weights=None)
