@@ -98,7 +98,7 @@ def load_defect_model():
     model_path = "best_biscuit_patch_model.pth"
     
     if not os.path.exists(model_path):
-        file_id = "13eY6048dG51DskZc49GZc6Y9b5E18f1p"
+        file_id = "1Iy6AAn5qN5sdxbumoELCpd09Z-EFwRFo"
         with st.spinner("Model dosyası yükleniyor, lütfen birkaç saniye bekleyin..."):
             download_file_from_google_drive(file_id, model_path)
 
