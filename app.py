@@ -15,10 +15,9 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Açık Renkli, Modern ve Okunaklı CSS Tasarımı
+# 2. Açık Renkli ve Okunaklı Arayüz Stili
 custom_css = """
 <style>
-    /* Ana Arka Plan */
     .stApp {
         background-color: #fcf9f2;
         background-image: radial-gradient(#d4a373 0.75px, transparent 0.75px), radial-gradient(#faedcd 0.75px, #fcf9f2 0.75px);
@@ -27,13 +26,15 @@ custom_css = """
         color: #1a1a1a !important;
     }
     
-    /* Sidebar Arka Planı */
     section[data-testid="stSidebar"] {
         background-color: #f5ede4 !important;
         border-right: 1px solid #e0d0c1;
     }
 
-    /* Genel Yazı Renkleri */
+    section[data-testid="stSidebar"] * {
+        color: #1a1a1a !important;
+    }
+
     h1, h2, h3, h4, h5, h6, p, span, label {
         color: #2c1810 !important;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -44,7 +45,6 @@ custom_css = """
         font-weight: 700 !important;
     }
 
-    /* Selectbox Açık Renk Düzeltmesi */
     div[data-baseweb="select"] > div {
         background-color: #ffffff !important;
         color: #1a1a1a !important;
@@ -57,7 +57,6 @@ custom_css = """
         background-color: transparent !important;
     }
 
-    /* Açılır Menü Listesi */
     ul[data-testid="stSelectboxVirtualDropdown"] {
         background-color: #ffffff !important;
     }
@@ -72,7 +71,6 @@ custom_css = """
         color: #4a2c11 !important;
     }
 
-    /* Buton Tasarımı */
     div.stButton > button {
         background-color: #c97a3e !important;
         color: #ffffff !important;
@@ -95,7 +93,7 @@ custom_css = """
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
-# 3. Model Yükleme Fonksiyonu
+# 3. Model Yükleme
 @st.cache_resource
 def load_defect_model():
     model_path = "best_biscuit_patch_model.pth"
@@ -114,39 +112,58 @@ def load_defect_model():
 
 model, device = load_defect_model()
 
-# 4. Patch Dönüşümleri ve Sabitler
+# 4. Patch Dönüşümleri
 transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
 PATCH_SIZE = 64
-STRIDE_VAL = 32  # Yayılmayı önleyen dengeli adım
 
-# 5. Kusur Analiz Fonksiyonu
-def analyze_biscuit(image, nok_threshold=0.45, min_component_area=150):
+# 5. Birebir Gradio Analiz Fonksiyonu
+def analyze_biscuit(image, nok_threshold=0.30, min_component_area=80):
+    if image is None:
+        return None, False, "Lütfen bir görsel yükleyin."
+
     img_np = np.array(image.convert("RGB"))
     h, w, _ = img_np.shape
 
-    # Bisküvi Gövde Maskesi (Arka planı filtreleme)
+    # 1. Dolu Bisküvi Gövde Maskesi (Derin oyukları korumak için Convex Hull)
     gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
-    _, roi_mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    roi_mask = (roi_mask > 0).astype(np.uint8)
+    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    solid_roi_mask = np.zeros((h, w), dtype=np.uint8)
+    
+    if contours:
+        largest_cnt = max(contours, key=cv2.contourArea)
+        hull = cv2.convexHull(largest_cnt)
+        cv2.drawContours(solid_roi_mask, [hull], -1, 1, thickness=-1)
+    else:
+        solid_roi_mask = (binary > 0).astype(np.uint8)
 
     heatmap_acc = np.zeros((h, w), dtype=np.float32)
     count_map = np.zeros((h, w), dtype=np.float32)
-    patch_batch, coords = [], []
+
+    patch_batch = []
+    coords = []
+
+    # Kenarlardaki ufak kırıkları kaçırmamak için adım
+    STRIDE_VAL = 16 
 
     for y in range(0, h - PATCH_SIZE + 1, STRIDE_VAL):
         for x in range(0, w - PATCH_SIZE + 1, STRIDE_VAL):
-            roi_patch = roi_mask[y:y+PATCH_SIZE, x:x+PATCH_SIZE]
-            if np.mean(roi_patch) >= 0.40:
+            roi_patch = solid_roi_mask[y:y+PATCH_SIZE, x:x+PATCH_SIZE]
+            
+            # Sınır bölgelerini de yakalayabilmek için oran %25
+            if np.mean(roi_patch) >= 0.25:
                 p = img_np[y:y+PATCH_SIZE, x:x+PATCH_SIZE]
-                patch_batch.append(transform(Image.fromarray(p)))
+                patch_pil = Image.fromarray(p)
+                patch_batch.append(transform(patch_pil))
                 coords.append((y, x))
 
     if len(patch_batch) == 0:
-        return img_np, False, "Bisküvi tespit edilemedi!"
+        return img_np, False, "Görselde bisküvi tespit edilemedi!"
 
     # Model Tahmini
     batch_tensors = torch.stack(patch_batch).to(device)
@@ -159,17 +176,18 @@ def analyze_biscuit(image, nok_threshold=0.45, min_component_area=150):
         count_map[y:y+PATCH_SIZE, x:x+PATCH_SIZE] += 1.0
 
     count_map[count_map == 0] = 1.0
-    heatmap_avg = (heatmap_acc / count_map) * roi_mask
+    heatmap_avg = (heatmap_acc / count_map) * solid_roi_mask
 
-    # İkili Eşikleme
+    # 2. İkili Eşikleme
     binary_defects = (heatmap_avg >= nok_threshold).astype(np.uint8) * 255
 
-    # Minimal bağlantı çekirdeği (aşırı taşmayı engeller)
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
+    # 3. Oyukları ve Çatlak Boşluklarını Tam Kapatma (Morphological Close)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21))
     closed_defects = cv2.morphologyEx(binary_defects, cv2.MORPH_CLOSE, kernel)
 
-    # Bağlı Bileşen Analizi ile Parazit Eleme
+    # 4. Bağlı Bileşen Analizi
     num_labels, labels_im, stats, _ = cv2.connectedComponentsWithStats(closed_defects, connectivity=8)
+
     clean_final_mask = np.zeros((h, w), dtype=np.uint8)
     valid_defects_found = False
 
@@ -179,17 +197,19 @@ def analyze_biscuit(image, nok_threshold=0.45, min_component_area=150):
             clean_final_mask[labels_im == i] = 255
             valid_defects_found = True
 
-    # Görselleştirme Katmanı
+    status_str = "🔴 SONUÇ: KUSURLU (NOK)" if valid_defects_found else "🟢 SONUÇ: SAĞLAM (OK)"
+
+    # 5. Görselleştirme: Dolu ve Canlı Kırmızı Renklendirme
     overlay = img_np.copy()
     if valid_defects_found:
-        soft_mask = cv2.GaussianBlur(clean_final_mask.astype(np.float32) / 255.0, (9, 9), 0)
+        soft_mask = cv2.GaussianBlur(clean_final_mask.astype(np.float32) / 255.0, (7, 7), 0)
         red_tint = np.zeros_like(img_np)
-        red_tint[:, :] = [255, 35, 35]
+        red_tint[:, :] = [255, 30, 30]
 
-        alpha = soft_mask[:, :, None] * 0.60
+        alpha = (soft_mask[:, :, None] * 0.65)
         overlay = (img_np * (1.0 - alpha) + red_tint * alpha).astype(np.uint8)
 
-    return overlay, valid_defects_found, "Analiz Tamamlandı"
+    return overlay, valid_defects_found, status_str
 
 # 6. Sidebar Kontrolleri
 st.sidebar.title("🍪 Kontrol Paneli")
@@ -222,16 +242,15 @@ if input_mode == "Örnek Görsellerden Seç":
         if chosen_display != "--- Bir görsel seçin ---":
             selected_image = Image.open(sample_dict[chosen_display])
     else:
-        st.sidebar.warning("`test/` klasöründe görsel bulunamadı.")
+        st.sidebar.warning("`test/` klasöründe uygun görsel bulunamadı.")
 else:
     uploaded_file = st.sidebar.file_uploader("Bisküvi fotoğrafı yükleyin...", type=["png", "jpg", "jpeg", "webp"])
     if uploaded_file is not None:
         selected_image = Image.open(uploaded_file)
 
 st.sidebar.divider()
-st.sidebar.subheader("Model Hassasiyet Ayarları")
-threshold_slider = st.sidebar.slider("NOK Hassasiyet Eşiği", min_value=0.1, max_value=0.8, value=0.45, step=0.05)
-min_area_slider = st.sidebar.slider("Min. Kusur Alanı (Piksel)", min_value=30, max_value=400, value=150, step=10)
+st.sidebar.subheader("Model Ayarları")
+threshold_slider = st.sidebar.slider("NOK Hassasiyet Eşiği", min_value=0.2, max_value=0.8, value=0.45, step=0.05)
 
 # 7. Ana Ekran
 st.title("🍪 Bisküvi Kalite Kontrol Sistemi")
@@ -240,24 +259,24 @@ st.write("Yapay zeka tabanlı yüzey hasarı, kırık ve çatlak tespit arayüz�
 if selected_image is not None:
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("Seçilen Görsel")
+        st.subheader("Girdi Görseli")
         st.image(selected_image, use_container_width=True)
 
     with col2:
         st.subheader("Kusur Analiz Sonucu")
         if st.button("🔍 Görseli Analiz Et", type="primary", use_container_width=True):
             with st.spinner("Model analiz ediyor..."):
-                result_img, is_defective, msg = analyze_biscuit(
+                result_img, is_defective, status_str = analyze_biscuit(
                     selected_image,
                     nok_threshold=threshold_slider,
-                    min_component_area=min_area_slider
+                    min_component_area=80
                 )
             st.image(result_img, use_container_width=True)
             st.divider()
             if is_defective:
-                st.error("🔴 SONUÇ: KUSURLU (NOK) - Hasarlı bölge kırmızıyla işaretlendi.")
+                st.error(status_str)
             else:
-                st.success("🟢 SONUÇ: SAĞLAM (OK) - Ürün standartlara uygun.")
+                st.success(status_str)
         else:
             st.info("Analizi başlatmak için yukarıdaki **'Görseli Analiz Et'** butonuna basın.")
 else:
