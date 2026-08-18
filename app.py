@@ -66,7 +66,7 @@ def load_defect_model():
     
     # Model dosyası yerelde yoksa Drive'dan indir
     if not os.path.exists(model_path):
-        file_id = "BURAYA_GDRIVE_FILE_ID_YAZILACAK"  # Kendi Drive ID'ni buraya yaz
+        file_id = "1Iy6AAn5qN5sdxbumoELCpd09Z-EFwRFo"  
         url = f"https://drive.google.com/uc?id={file_id}"
         gdown.download(url, model_path, quiet=False)
 
