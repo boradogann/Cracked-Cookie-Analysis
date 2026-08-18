@@ -15,26 +15,29 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Açık Renkli ve Okunaklı Arayüz Stili
+# 2. Açık Renkleri ve Okunaklılığı Garanti Eden CSS
 custom_css = """
 <style>
+    /* Ana Arka Plan */
     .stApp {
-        background-color: #fcf9f2;
-        background-image: radial-gradient(#d4a373 0.75px, transparent 0.75px), radial-gradient(#faedcd 0.75px, #fcf9f2 0.75px);
-        background-size: 30px 30px;
-        background-position: 0 0, 15px 15px;
+        background-color: #fcf9f2 !important;
+        background-image: radial-gradient(#d4a373 0.75px, transparent 0.75px), radial-gradient(#faedcd 0.75px, #fcf9f2 0.75px) !important;
+        background-size: 30px 30px !important;
+        background-position: 0 0, 15px 15px !important;
         color: #1a1a1a !important;
     }
     
+    /* Sidebar */
     section[data-testid="stSidebar"] {
         background-color: #f5ede4 !important;
-        border-right: 1px solid #e0d0c1;
+        border-right: 1px solid #e0d0c1 !important;
     }
 
     section[data-testid="stSidebar"] * {
         color: #1a1a1a !important;
     }
 
+    /* Genel Metinler ve Başlıklar */
     h1, h2, h3, h4, h5, h6, p, span, label {
         color: #2c1810 !important;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -45,25 +48,32 @@ custom_css = """
         font-weight: 700 !important;
     }
 
-    div[data-baseweb="select"] > div {
+    /* Selectbox Dış Kutu ve İç Elemanları (Dark Mode Zorlamasını Kırar) */
+    .stSelectbox div[data-baseweb="select"],
+    .stSelectbox div[data-baseweb="select"] > div,
+    .stSelectbox div[data-baseweb="select"] input,
+    .stSelectbox div[data-baseweb="select"] div {
         background-color: #ffffff !important;
         color: #1a1a1a !important;
+        -webkit-text-fill-color: #1a1a1a !important;
+    }
+
+    .stSelectbox div[data-baseweb="select"] {
         border: 1.5px solid #d4a373 !important;
         border-radius: 8px !important;
     }
 
-    div[data-baseweb="select"] * {
-        color: #1a1a1a !important;
-        background-color: transparent !important;
+    .stSelectbox svg {
+        fill: #1a1a1a !important;
     }
 
-    ul[data-testid="stSelectboxVirtualDropdown"] {
-        background-color: #ffffff !important;
-    }
-    
-    ul[data-testid="stSelectboxVirtualDropdown"] li {
+    /* Açılır Menü Seçenek Listesi */
+    ul[data-testid="stSelectboxVirtualDropdown"],
+    ul[data-testid="stSelectboxVirtualDropdown"] li,
+    ul[data-testid="stSelectboxVirtualDropdown"] div {
         background-color: #ffffff !important;
         color: #1a1a1a !important;
+        -webkit-text-fill-color: #1a1a1a !important;
     }
 
     ul[data-testid="stSelectboxVirtualDropdown"] li:hover {
@@ -71,6 +81,7 @@ custom_css = """
         color: #4a2c11 !important;
     }
 
+    /* Buton Tasarımı */
     div.stButton > button {
         background-color: #c97a3e !important;
         color: #ffffff !important;
@@ -120,7 +131,7 @@ transform = transforms.Compose([
 
 PATCH_SIZE = 64
 
-# 5. Birebir Gradio Analiz Fonksiyonu
+# 5. Kusur Analiz Fonksiyonu
 def analyze_biscuit(image, nok_threshold=0.30, min_component_area=80):
     if image is None:
         return None, False, "Lütfen bir görsel yükleyin."
@@ -128,7 +139,7 @@ def analyze_biscuit(image, nok_threshold=0.30, min_component_area=80):
     img_np = np.array(image.convert("RGB"))
     h, w, _ = img_np.shape
 
-    # 1. Dolu Bisküvi Gövde Maskesi (Derin oyukları korumak için Convex Hull)
+    # 1. Dolu Bisküvi Gövde Maskesi (Convex Hull)
     gray = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
     _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     
@@ -148,14 +159,12 @@ def analyze_biscuit(image, nok_threshold=0.30, min_component_area=80):
     patch_batch = []
     coords = []
 
-    # Kenarlardaki ufak kırıkları kaçırmamak için adım
     STRIDE_VAL = 16 
 
     for y in range(0, h - PATCH_SIZE + 1, STRIDE_VAL):
         for x in range(0, w - PATCH_SIZE + 1, STRIDE_VAL):
             roi_patch = solid_roi_mask[y:y+PATCH_SIZE, x:x+PATCH_SIZE]
             
-            # Sınır bölgelerini de yakalayabilmek için oran %25
             if np.mean(roi_patch) >= 0.25:
                 p = img_np[y:y+PATCH_SIZE, x:x+PATCH_SIZE]
                 patch_pil = Image.fromarray(p)
@@ -181,7 +190,7 @@ def analyze_biscuit(image, nok_threshold=0.30, min_component_area=80):
     # 2. İkili Eşikleme
     binary_defects = (heatmap_avg >= nok_threshold).astype(np.uint8) * 255
 
-    # 3. Oyukları ve Çatlak Boşluklarını Tam Kapatma (Morphological Close)
+    # 3. Morfolojik Kapanış
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21))
     closed_defects = cv2.morphologyEx(binary_defects, cv2.MORPH_CLOSE, kernel)
 
@@ -199,7 +208,7 @@ def analyze_biscuit(image, nok_threshold=0.30, min_component_area=80):
 
     status_str = "🔴 SONUÇ: KUSURLU (NOK)" if valid_defects_found else "🟢 SONUÇ: SAĞLAM (OK)"
 
-    # 5. Görselleştirme: Dolu ve Canlı Kırmızı Renklendirme
+    # 5. Görselleştirme
     overlay = img_np.copy()
     if valid_defects_found:
         soft_mask = cv2.GaussianBlur(clean_final_mask.astype(np.float32) / 255.0, (7, 7), 0)
