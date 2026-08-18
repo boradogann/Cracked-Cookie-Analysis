@@ -45,18 +45,22 @@ custom_css = """
 st.markdown(custom_css, unsafe_allow_html=True)
 
 # 2. Model Yükleme
-@st.cache_resource
 def load_defect_model():
+    model_path = "best_biscuit_patch_model.pth"
+    
+    # Model yerelde yoksa Google Drive'dan otomatik indir
+    if not os.path.exists(model_path):
+        file_id = "1Iy6AAn5qN5sdxbumoELCpd09Z-EFwRFo"
+        url = f"https://drive.google.com/uc?id={file_id}"
+        gdown.download(url, model_path, quiet=False)
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = models.resnet18(weights=None)
     model.fc = nn.Linear(model.fc.in_features, 2)
-    model.load_state_dict(torch.load("best_biscuit_patch_model.pth", map_location=device))
+    model.load_state_dict(torch.load(model_path, map_location=device))
     model = model.to(device)
     model.eval()
     return model, device
-
-model, device = load_defect_model()
-
 # 3. Patch Dönüşümleri
 transform = transforms.Compose([
     transforms.ToTensor(),
